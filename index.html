@@ -902,5 +902,169 @@ const Candles = (() => {
 
 })();
 </script>
+     <style>
+.vp{position:fixed;inset:0;z-index:110;display:grid;place-items:center;background:rgba(18,7,26,.76);opacity:0;visibility:hidden;transition:opacity .5s,visibility .5s}
+.vp.show{opacity:1;visibility:visible}
+body.vp-open{overflow:hidden}
+.vp-card{--cw:min(88vw,360px);position:relative;width:min(95vw,396px);padding:10px 10px 58px;background:#fffaf5;border-radius:3px;box-shadow:0 24px 60px rgba(0,0,0,.55);transform:translateY(18px) scale(.92);transition:transform .7s var(--ease)}
+.vp.show .vp-card{transform:none}
+.vp-card::before{content:"";position:absolute;top:-13px;left:50%;width:86px;height:26px;background:rgba(255,214,130,.82);box-shadow:0 1px 3px rgba(0,0,0,.15);transform:translateX(-50%) rotate(-3deg);z-index:2}
+.vp-stage{position:relative;width:100%;aspect-ratio:var(--ratio,4 / 5);min-height:min(calc(var(--cw) * .96),calc(100dvh - 140px));max-height:calc(100dvh - 140px);background:#120a18;overflow:hidden}
+.vp-stage video,.vp-stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;object-fit:contain;background:#000}
+.vp-play{position:absolute;inset:0;display:none;place-items:center;background:rgba(18,10,24,.4)}
+.vp-play span{display:grid;place-items:center;width:78px;height:78px;border-radius:50%;background:var(--gold);color:var(--night);box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.vp-stage.need-tap .vp-play{display:grid}
+.vp-msg{position:absolute;inset:0;display:none;place-items:center;padding:24px;text-align:center;color:var(--peach);font-size:16px;line-height:1.5}
+.vp-stage.failed .vp-msg{display:grid}
+.vp-stage.failed .vp-play{display:none}
+.vp-close{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);min-height:46px;padding:0 26px;font-family:var(--hand);font-size:23px;color:var(--plum)}
+</style>
+
+<script>
+(() => {
+'use strict';
+
+/* >>> Atur video di sini <<< */
+const VIDEO = {
+  src:     "video.mp4",   // nama file video yang diupload ke repositori (MP4, H.264)
+  youtube: "",            // ATAU isi ID / link YouTube di sini (lalu kosongkan src jadi "")
+  ratio:   "8 / 7",       // bentuk bingkai video. "8 / 7" = seukuran kue. Video tegak dari HP: "9 / 16" (popup jadi lebih tinggi). Mendatar: "16 / 9"
+  delay:   3500           // jeda (milidetik) setelah lilin padam sebelum popup muncul
+};
+
+if (!VIDEO.src && !VIDEO.youtube) return;
+
+const $ = s => document.querySelector(s);
+const night = $('#night'), fab = $('#musicFab'), main = $('main');
+const ytId = s => (String(s).match(/(?:youtu\.be\/|v=|embed\/|shorts\/)([\w-]{11})/) || [, String(s).trim()])[1];
+
+/* ---------- Susunan popup ---------- */
+const root = document.createElement('div');
+root.className = 'vp';
+root.setAttribute('role', 'dialog');
+root.setAttribute('aria-modal', 'true');
+root.setAttribute('aria-label', 'Video untukmu');
+root.setAttribute('aria-hidden', 'true');
+root.innerHTML =
+  '<div class="vp-card">' +
+    '<div class="vp-stage" id="vpStage">' +
+      '<button class="vp-play" id="vpPlay" type="button" aria-label="Putar video"><span><svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></span></button>' +
+      '<p class="vp-msg">Videonya belum bisa dimuat. Periksa nama file di pengaturan VIDEO.</p>' +
+    '</div>' +
+    '<button class="vp-close" id="vpClose" type="button">Tutup</button>' +
+  '</div>';
+document.body.appendChild(root);
+
+const card = root.firstElementChild;
+const stage = $('#vpStage'), playBtn = $('#vpPlay'), closeBtn = $('#vpClose');
+stage.style.setProperty('--ratio', VIDEO.ratio);
+
+// Popup di tengah layar; hanya digeser seperlunya supaya kue tertutup penuh
+function place() {
+  const vh = root.clientHeight, h = card.offsetHeight;
+  let top = (vh - h) / 2;
+  const c = $('#cakeWrap').getBoundingClientRect();
+  if (c.bottom > 0 && c.top < vh) {
+    top = Math.min(top, c.top - 14);
+    top = Math.max(top, c.bottom + 14 - h);
+  }
+  top = Math.max(12, Math.min(top, vh - h - 12));
+  card.style.translate = '0 ' + (top - (vh - h) / 2) + 'px';
+}
+window.addEventListener('resize', () => { if (isOpen) place(); });
+
+let vid = null, frame = null, isOpen = false, timer = null, resume = false, lastFocus = null;
+
+if (VIDEO.src) {
+  vid = document.createElement('video');
+  vid.playsInline = true;
+  vid.controls = true;
+  vid.preload = 'none';
+  vid.setAttribute('controlslist', 'nodownload');
+  vid.src = VIDEO.src;
+  vid.addEventListener('error', () => stage.classList.add('failed'));
+  vid.addEventListener('play', () => stage.classList.remove('need-tap'));
+  stage.prepend(vid);
+
+  // Mulai mengunduh video saat bagian kue mendekati layar, supaya langsung jalan saat popup muncul
+  new IntersectionObserver((es, io) => {
+    if (es.some(e => e.isIntersecting)) { vid.preload = 'auto'; vid.load(); io.disconnect(); }
+  }, { rootMargin: '900px 0px' }).observe(night);
+}
+
+/* ---------- Buka & tutup ---------- */
+function open() {
+  if (isOpen) return;
+  isOpen = true;
+  lastFocus = document.activeElement;
+  const toast = $('#toast');
+  if (toast) toast.classList.remove('show');
+
+  resume = fab.classList.contains('playing');
+  if (resume) fab.click();                          // jeda musik selama video diputar
+
+  stage.classList.remove('failed', 'need-tap');
+  if (vid) {
+    if (vid.error) vid.load();                      // coba muat ulang jika sebelumnya gagal
+    vid.currentTime = 0;
+    const p = vid.play();
+    if (p && p.catch) p.catch(() => { if (isOpen) stage.classList.add(vid.error ? 'failed' : 'need-tap'); });
+  } else {
+    frame = document.createElement('iframe');
+    frame.src = 'https://www.youtube.com/embed/' + ytId(VIDEO.youtube) + '?autoplay=1&playsinline=1&rel=0&modestbranding=1';
+    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    frame.title = 'Video untukmu';
+    stage.prepend(frame);
+  }
+
+  place();
+  root.classList.add('show');
+  root.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('vp-open');
+  main.inert = true;
+  setTimeout(() => closeBtn.focus({ preventScroll: true }), 60);
+}
+
+function close() {
+  if (!isOpen) return;
+  isOpen = false;
+  if (vid) vid.pause();
+  if (frame) { frame.remove(); frame = null; }
+  root.classList.remove('show');
+  root.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('vp-open');
+  main.inert = false;
+  if (resume) { resume = false; fab.click(); }      // lanjutkan musik
+  if (lastFocus && lastFocus.focus) lastFocus.focus({ preventScroll: true });
+}
+
+closeBtn.addEventListener('click', close);
+root.addEventListener('click', e => { if (e.target === root) close(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+playBtn.addEventListener('click', () => {
+  if (vid) vid.play().then(() => stage.classList.remove('need-tap')).catch(() => {});
+});
+
+/* ---------- Pemicu: muncul beberapa detik setelah lilin padam ---------- */
+let wasDone = night.classList.contains('done');
+new MutationObserver(() => {
+  const done = night.classList.contains('done');
+  if (done === wasDone) return;
+  wasDone = done;
+  clearTimeout(timer);
+  if (done) timer = setTimeout(open, VIDEO.delay);
+  else close();                                     // lilin dinyalakan lagi
+}).observe(night, { attributes: true, attributeFilter: ['class'] });
+
+/* ---------- Tombol untuk menonton ulang ---------- */
+const again = document.createElement('button');
+again.type = 'button';
+again.className = 'btn btn-line';
+again.textContent = 'Putar video lagi';
+again.addEventListener('click', open);
+const acts = night.querySelector('.actions.only-post');
+if (acts) acts.prepend(again);
+})();
+</script>
 </body>
 </html>
