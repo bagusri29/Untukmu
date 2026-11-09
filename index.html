@@ -343,6 +343,7 @@ const CONFIG = {
   // ID video YouTube (bagian setelah youtu.be/ dan sebelum tanda ?)
   music: {
     main:   "q6on6wvbvwk",             // lagu latar utama
+    candle: ""
   },
   volume: { main: 70, candle: 90 },    // 0-100 (tidak berpengaruh di iPhone, volume ikut tombol HP)
 
@@ -519,6 +520,7 @@ const Music = (() => {
 
   function switchTo(key) {
     if (!ready) return;
+       if (!CONFIG.music[key] || key === current) { unhush(); return; }   // tanpa lagu kedua: lagu utama lanjut
     current = key;
     hushed = false;
     yt.loadVideoById({ videoId: CONFIG.music[key], startSeconds: 0 });
