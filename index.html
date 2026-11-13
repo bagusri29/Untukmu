@@ -400,6 +400,8 @@ const CONFIG = {
 const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const fmt = s => String(s).split('{name}').join(CONFIG.name);
+// Teks di antara tanda ** ** ditampilkan tebal (bold)
+const bold = (p, t) => { String(t).split('**').forEach((s, i) => p.append(i % 2 ? Object.assign(document.createElement('strong'), { textContent: s }) : document.createTextNode(s))); return p; };
 
 /* ---------------------------------------------------------------------
    Isi teks dari CONFIG
@@ -696,7 +698,7 @@ const Confetti = (() => {
       const body = el('div', 'letter-body');
       const inner = document.createElement('div');
       const sheet = el('div', 'paper');
-      sheet.append(el('p', null, fmt(w.text)));
+      sheet.append(bold(el('p'), fmt(w.text)));
       if (w.sign) sheet.append(el('p', 'sign', w.sign));
       inner.appendChild(sheet);
       body.appendChild(inner);
@@ -713,7 +715,7 @@ const Confetti = (() => {
     const who = el('p', 'sticky-who');
     who.append(document.createTextNode(w.from));
     if (w.role) who.append(el('small', null, w.role));
-    note.append(el('p', 'sticky-text', fmt(w.text)), who);
+    note.append(bold(el('p', 'sticky-text'), fmt(w.text)), who);
     box.appendChild(note);
   });
 })();
